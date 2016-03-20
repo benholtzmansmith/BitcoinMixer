@@ -1,0 +1,7 @@
+New log file opened at Sun Mar 20 16:02:14 EDT 2016 by 93220@Benjamins-MacBook-Pro-2.local
+Taking next connection to: 49853
+New client attempting to connect on port: 49854-49853
+  Address = /10.0.1.200:49853
+This client on port 49854 has uuid 9f588952-7238-4037-b2e6-76c37d9760f2 configName activator humanReadableName Activator protocolVersion 3 featureTags Vector()
+Connected Clients: activator-9f588952-7238-4037-b2e6-76c37d9760f2
+Taking next connection to: 49853
