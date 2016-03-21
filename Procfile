@@ -1,1 +1,1 @@
-web: target/universal/stage/bin/BitcoinMixer
+web: target/universal/stage/bin/bitcoin-mixer
