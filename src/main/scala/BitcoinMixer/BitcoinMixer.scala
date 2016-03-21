@@ -11,7 +11,9 @@ import spray.http._
 import spray.httpx.unmarshalling.Unmarshaller
 
 import scala.concurrent.duration._
+import scala.sys.process
 import scala.util.{Failure, Success}
+import util.Properties
 
 
 /**
@@ -35,11 +37,13 @@ object BitcoinMixer {
 
     implicit val timeout = Timeout(20.seconds)
 
+    val myPort = Properties.envOrElse("PORT", "8080").toInt
+
     println("Starting server!")
 
     scheduleEvery(10.seconds)(())
 
-    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = 8080)
+    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = myPort)
   }
 }
 
