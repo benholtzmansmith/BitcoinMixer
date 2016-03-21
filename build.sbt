@@ -22,6 +22,6 @@ libraryDependencies ++= {
 
 lazy val root = (project in file(".")).enablePlugins(JavaAppPackaging)
 
-herokuAppName in Compile := "bitcoin-mixer"
+herokuAppName in Compile := "BitcoinMixer"
 
 fork in run := true
