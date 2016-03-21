@@ -39,11 +39,13 @@ object BitcoinMixer {
 
     val myPort = Properties.envOrElse("PORT", "8080").toInt
 
+    println(myPort)
+
     println("Starting server!")
 
     scheduleEvery(10.seconds)(())
 
-    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = myPort)
+    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "0.0.0.0", port = myPort)
   }
 }
 
