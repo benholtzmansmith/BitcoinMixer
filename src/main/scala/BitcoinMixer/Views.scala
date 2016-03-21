@@ -14,7 +14,7 @@ object Views {
         <body>
           <h1>Successful processing</h1>
           <br></br>
-          Here is your new address:{newAddress}
+          Here is your new address:  {newAddress}
           <a href="/"> Go back</a>
         </body>s
       </html>.toString()
@@ -55,18 +55,24 @@ object Views {
               Any bad request will return a failure.
               <br></br>
               <form action="/make-new-addresses" method="post">
-                Submit space separated new addresses to make that you will now own: <input type="text" name="addresses"></input>
+                Submit space separated new addresses to make that you will now own
+                These are empty addresses that you can pass into the next submit box to get a jobcoin address:
+                <br></br>
+                <input type="text" name="addresses"></input>
                 <input type="submit"></input>
               </form>
 
               <form action ="/input-addresses" method="post">
-                Submit your new addresses separated by a space:  <input type="text" name="addresses"></input>
+                Submit your new addresses separated by a space to get a jocoin address:
+                <br></br>
+                <input type="text" name="addresses"></input>
                 <input type="submit"></input>
               </form>
 
               <form action="/transfer-coins" method="post">
-                Transfer coins from an address you own to another one. To complete mixing, transer to the house address.
-
+                Transfer coins from an address you own to another one.
+                To complete mixing, transer to the house address.
+                <br></br>
                 From Address: <input type="text" name="fromAddress"></input>
                 To Address: <input type="text" name="toAddress"></input>
                 Amount: <input type="text" name="amount"></input>

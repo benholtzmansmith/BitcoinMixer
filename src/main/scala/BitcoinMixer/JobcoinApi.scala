@@ -13,6 +13,9 @@ import JsonToCaseClass.fromJson
  * Created by benjaminsmith on 3/21/16.
  */
 object JobcoinApi {
+
+  val houseAddress:String = "house"
+
   def postTransaction(transaction: Transaction):Try[Unit] = {
     val result = Http("http://jobcoin.projecticeland.net/tractarian/api/transactions").
       postData(Json.toJson(transaction).toString()).

@@ -4,17 +4,20 @@ import akka.actor.{Actor, ActorSystem, Props}
 import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
-import play.api.libs.json.{JsResult, Json, Reads}
+import play.api.libs.json._
 import spray.can.{Http => SprayHttp}
 import spray.http.HttpMethods._
 import spray.http._
 import spray.httpx.unmarshalling.Unmarshaller
+import com.mongodb.util.{ JSON => MongoJson}
 
 import scala.concurrent.duration._
 import scala.sys.process
-import scala.util.{Failure, Success}
-import util.Properties
-
+import scala.util.{Properties, Failure, Success}
+import com.mongodb.casbah._
+import com.mongodb.DBObject
+import com.mongodb.casbah.commons.MongoDBObject
+import com.mongodb.casbah.Implicits._
 
 /**
  * Created by benjaminsmith on 3/18/16.
@@ -28,6 +31,25 @@ import util.Properties
  * 6. Then, over some time the mixer will use the house account to dole out your bitcoins in smaller increments to the withdrawal addresses that you provided, possibly after deducting a fee.
  *
  */
+object MongoWrapper {
+  import JsonToCaseClass.{fromJson, toJson}
+  private lazy val mongoUri = MongoClientURI("mongodb://test:test@ds021299.mlab.com:21299/heroku_zmx64m97")
+
+  private lazy val mongoClient = MongoClient(mongoUri)
+
+  private lazy val internalAccountInfo = mongoClient("heroku_zmx64m97")("internalAccountInfo")
+
+  def getInternalAccountInfo:List[JsResult[InternalAccountInfo]] =
+    internalAccountInfo.find().map( dbo => fromJson[InternalAccountInfo](dbo.toString)).toList
+
+  def updateCanProcess(accountInfo: InternalAccountInfo) =
+    internalAccountInfo.update(MongoDBObject("accountId" -> accountInfo.accountId), MongoDBObject("$set" -> MongoDBObject("canProcess" -> true)))
+
+  def insertNewAccountInfo(address: InternalAccountInfo) =
+    internalAccountInfo.insert(toJson[InternalAccountInfo](address))
+}
+
+
 object BitcoinMixer {
   import Scheduler.scheduleEvery
   def main(args: Array[String]): Unit = {
@@ -39,28 +61,63 @@ object BitcoinMixer {
 
     val myPort = Properties.envOrElse("PORT", "8080").toInt
 
-    println(myPort)
-
     println("Starting server!")
 
-    scheduleEvery(10.seconds)(())
+    scheduleEvery(10.seconds)(PollJobcoin.moveToHouseAccount)
 
-    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "0.0.0.0", port = myPort)
+    scheduleEvery(1.minute)(PollJobcoin.distributeToWithdrawalAccounts)
+    
+    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = myPort)
   }
 }
 
 
+object PollJobcoin {
+  import JobcoinApi._
+  import MongoWrapper._
+
+  def moveToHouseAccount:Unit = {
+    getInternalAccountInfo.
+      collect{ case JsSuccess(a, _) => a}.
+      foreach( accountInfo => {
+        val balanceIsTheSame = getBalanceAndListOfTransactions(accountInfo.jobCoinAddress).
+          asOpt.
+          exists( _.balance.toLong == accountInfo.amountInAccount.toLong)
+        val balanceIsDifferent = !balanceIsTheSame
+        if (balanceIsDifferent) {
+          postTransaction(Transaction(accountInfo.jobCoinAddress, houseAddress, accountInfo.amountInAccount.toString))
+          updateCanProcess(accountInfo.copy(canProcess = true))
+        }
+    })
+  }
+  
+  def distributeToWithdrawalAccounts:Unit = {
+    getInternalAccountInfo.
+      collect{ case JsSuccess(a, _) => a}.
+      foreach{ accountInfo => {
+      if (accountInfo.canProcess){
+        val someEvenAmount = accountInfo.amountInAccount.toLong / accountInfo.userOwnedAddresses.length
+
+        accountInfo.userOwnedAddresses.map(a => postTransaction(Transaction(houseAddress, a, someEvenAmount.toString)))
+      }
+    }}
+  }
+}
+
 class MixerServiceActor extends Actor {
   import JobcoinApi._
+  import MongoWrapper._
   import Views._
   def actorRefFactory = context
   def receive = {
     case _: SprayHttp.Connected => sender ! SprayHttp.Register(self)
     case HttpRequest(GET, Uri.Path("/"), _, _, _) => sender ! index
     case HttpRequest(POST, Uri.Path("/input-addresses"), headers, entity: HttpEntity.NonEmpty, protocol) => {
-      val possibleError = Unmarshaller.unmarshal[Addresses](entity).
+      val ad = Unmarshaller.unmarshal[Addresses](entity).
         fold(_ => Addresses(Nil), identity(_)).
-        addresses.
+        addresses
+
+      val possibleError = ad.
         map(getBalanceAndListOfTransactions).
         find(_.isError)
       possibleError match {
@@ -68,7 +125,10 @@ class MixerServiceActor extends Actor {
         case None => {
           val newId = JobcoinApi.newId
           generateNewAddress(newId) match {
-            case Success( _ ) => sender ! newAddress(newId)
+            case Success( _ ) => {
+              insertNewAccountInfo(InternalAccountInfo(newId, newId, ad, 0, false))
+              sender ! newAddress(newId)
+            }
             case Failure( _ ) => sender ! failure
           }
         }
@@ -77,7 +137,7 @@ class MixerServiceActor extends Actor {
     }
     case HttpRequest(POST, Uri.Path("/transfer-coins"), headers, entity: HttpEntity.NonEmpty, protocol) => {
       Unmarshaller.unmarshal[Transaction](entity) match {
-        case Right(transaction) if transaction.fromAddress != "house" =>
+        case Right(transaction) if transaction.fromAddress != houseAddress =>
           postTransaction(transaction) match {
             case Success( _ ) => sender ! success
             case Failure ( _ ) => sender ! failure
@@ -90,17 +150,20 @@ class MixerServiceActor extends Actor {
         fold(_ => Addresses(Nil), identity(_)).
         addresses.
         map(generateNewAddress).find( _.isFailure) match {
-        case Some( _ ) => sender ! failure
-        case None => sender ! success
-      }
+          case Some( _ ) => sender ! failure
+          case None => sender ! success
+        }
     }
   }
 }
 
 object JsonToCaseClass{
-  def fromJson[T: Reads](jsonString:String):JsResult[T] = {
+  def fromJson[T: Reads](jsonString:String):JsResult[T] =
     Json.fromJson[T](Json.parse(jsonString))
-  }
+
+  def toJson[T : Writes](t: T): DBObject =
+    MongoJson.parse(Json.stringify(Json.toJson(t))).asInstanceOf[DBObject]
+
 }
 
 object Scheduler {

@@ -47,6 +47,11 @@ object Addresses{
   }
 }
 
+case class InternalAccountInfo(accountId:String, jobCoinAddress:String, userOwnedAddresses:List[String], amountInAccount:Int, canProcess:Boolean)
+object InternalAccountInfo{
+  implicit val addressFormat:Format[InternalAccountInfo] = Json.format[InternalAccountInfo]
+}
+
 object UrlEncoded {
   val urlEncoded = MediaTypes.`application/x-www-form-urlencoded`
 }
