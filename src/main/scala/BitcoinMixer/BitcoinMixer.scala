@@ -47,15 +47,9 @@ object BitcoinMixer {
 
     println("Starting server!")
 
-    scheduleEvery(10.seconds)(PollJobCoin.run)
+    scheduleEvery(10.seconds)(())
 
     IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = 8080)
-  }
-}
-
-object PollJobCoin{
-  def run = {
-
   }
 }
 
