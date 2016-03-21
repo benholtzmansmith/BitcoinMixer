@@ -20,4 +20,6 @@ libraryDependencies ++= {
   )
 }
 
+lazy val root = (project in file(".")).enablePlugins(JavaAppPackaging)
+
 fork in run := true
