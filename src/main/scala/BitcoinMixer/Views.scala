@@ -71,7 +71,6 @@ object Views {
 
               <form action="/transfer-coins" method="post">
                 Transfer coins from an address you own to another one.
-                To complete mixing, transer to the house address.
                 <br></br>
                 From Address: <input type="text" name="fromAddress"></input>
                 To Address: <input type="text" name="toAddress"></input>
