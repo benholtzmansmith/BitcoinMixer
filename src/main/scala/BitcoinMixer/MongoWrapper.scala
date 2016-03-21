@@ -30,5 +30,5 @@ object MongoWrapper {
     internalAccountInfo.insert(toJson[InternalAccountInfo](address))
 
   def updateAmount(accountInfo: InternalAccountInfo) =
-    internalAccountInfo.update(MongoDBObject("accountId" -> accountInfo.accountId), MongoDBObject("$set" -> MongoDBObject("amount" -> accountInfo.amountInAccount)))
+    internalAccountInfo.update(MongoDBObject("accountId" -> accountInfo.accountId), MongoDBObject("$set" -> MongoDBObject("amountInAccount" -> accountInfo.amountInAccount)))
 }
