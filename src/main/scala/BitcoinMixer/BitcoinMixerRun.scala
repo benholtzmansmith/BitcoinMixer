@@ -37,7 +37,7 @@ object BitcoinMixerRun {
     implicit val system = ActorSystem("on-spray-can")
 
     // create and start our service actor
-    val service = system.actorOf(Props[MyServiceActor], "demo-service")
+    val service = system.actorOf(Props[MixerServiceActor], "demo-service")
 
     implicit val timeout = Timeout(5.seconds)
     // start a new HTTP server on port 8080 with our service actor as the handler
@@ -55,26 +55,18 @@ object BitcoinMixer{
 }
 
 
-class MyServiceActor extends Actor with MyService {
-
-  // the HttpService trait defines only one abstract member, which
-  // connects the services environment to the enclosing actor or test
+class MixerServiceActor extends Actor with MixerService {
   def actorRefFactory = context
-
-  // this actor only runs our route, but you could add
-  // other things here, like request stream processing
-  // or timeout handling
-  def receive = runRoute(myRoute)
+  def receive = runRoute(mixerRoute)
 }
 
 
-// this trait defines our service behavior independently from the service actor
-trait MyService extends HttpService {
+trait MixerService extends HttpService {
 
-  val myRoute =
+  val mixerRoute =
     path("") {
       get {
-        respondWithMediaType(`text/html`) { // XML is marshalled to `text/xml` by default, so we simply override here
+        respondWithMediaType(`text/html`) {
           complete {
             <html>
               <body>
