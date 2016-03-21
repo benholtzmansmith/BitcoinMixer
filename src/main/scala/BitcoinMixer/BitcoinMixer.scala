@@ -1,7 +1,6 @@
 package BitcoinMixer
 
 import java.util.UUID
-
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
 import play.api.libs.json.{JsResult, Reads, Format, Json}
@@ -23,6 +22,7 @@ import scala.concurrent.duration._
 import MediaTypes._
 import HttpMethods._
 import UrlEncoded.urlEncoded
+import Scheduler.scheduleEvery
 
 
 /**
@@ -47,12 +47,21 @@ object BitcoinMixer {
 
     println("Starting server!")
 
+    scheduleEvery(10.seconds)(PollJobCoin.run)
+
     IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = 8080)
+  }
+}
+
+object PollJobCoin{
+  def run = {
+
   }
 }
 
 
 class MixerServiceActor extends Actor {
+  import JobcoinApi._
   def actorRefFactory = context
   def receive = {
     case _: SprayHttp.Connected => sender ! SprayHttp.Register(self)
@@ -61,33 +70,48 @@ class MixerServiceActor extends Actor {
       val possibleError = Unmarshaller.unmarshal[Addresses](entity).
         fold(_ => Addresses(Nil), identity(_)).
         addresses.
-        map(JobcoinApi.getBalanceAndListOfTransactions).
+        map(getBalanceAndListOfTransactions).
         find(_.isError)
       possibleError match {
-        case Some(err) =>
-        case None =>
+        case Some(err) => sender ! failure
+        case None => {
+          val newId = JobcoinApi.newId
+          generateNewAddress(newId) match {
+            case Success( _ ) => sender ! newAddress(newId)
+            case Failure( _ ) => sender ! failure
+          }
+        }
       }
       sender ! index
     }
     case HttpRequest(POST, Uri.Path("/transfer-coins"), headers, entity: HttpEntity.NonEmpty, protocol) => {
       Unmarshaller.unmarshal[Transaction](entity) match {
-        case Right(transaction) =>
-          JobcoinApi.postTransaction(transaction) match {
+        case Right(transaction) if transaction.fromAddress != "house" =>
+          postTransaction(transaction) match {
             case Success( _ ) => sender ! success
             case Failure ( _ ) => sender ! failure
           }
         case Left( _ ) => sender ! failure
       }
     }
+    case HttpRequest(POST, Uri.Path("/make-new-addresses"), headers, entity: HttpEntity.NonEmpty, protocol) => {
+      Unmarshaller.unmarshal[Addresses](entity).
+        fold(_ => Addresses(Nil), identity(_)).
+        addresses.
+        map(generateNewAddress).find( _.isFailure) match {
+        case Some( _ ) => sender ! failure
+        case None => sender ! success
+      }
+    }
   }
 
-  def houseAddress(houseAddress:String) = HttpResponse( entity =
+  def newAddress(newAddress:String) = HttpResponse( entity =
     HttpEntity(`text/html`,
       <html>
         <body>
           <h1>Successful processing</h1>
           <br></br>
-          s"Here  is your new address:${houseAddress}"
+          Here is your new address:{newAddress}
           <a href="/"> Go back</a>
         </body>s
       </html>.toString()
@@ -123,17 +147,28 @@ class MixerServiceActor extends Actor {
           <body>
             <h1>Bitcoin Mixer</h1>
             <div>
+
+              Use the below forms to operate the mixer. Any bad request will return a failure.
+
+              <form action="/make-new-addresses" method="post">
+                Submit space separated new addresses to make that you will now own: <input type="text" name="addresses"></input>
+                <input type="submit"></input>
+              </form>
+
               <form action ="/input-addresses" method="post">
-                Submit your addresses separated by a space:  <input type="text" name="addresses"></input>
+                Submit your new addresses separated by a space:  <input type="text" name="addresses"></input>
                 <input type="submit"></input>
               </form>
 
               <form action="/transfer-coins" method="post">
+                Transfer coins from an address you own to another one. To complete mixing, transer to the house address.
+
                 From Address: <input type="text" name="fromAddress"></input>
                 To Address: <input type="text" name="toAddress"></input>
                 Amount: <input type="text" name="amount"></input>
                 <input type="submit"></input>
               </form>
+
             </div>
           </body>
         </html>.toString()
@@ -166,6 +201,14 @@ object JobcoinApi {
         asString.
         body
     fromJson[Account](transactions)
+  }
+
+  def newId:String = UUID.randomUUID().toString
+
+  def generateNewAddress(addressString: String):Try[Unit] = {
+    //This is the only way to make a new account through the API that I could think of.
+    postTransaction(Transaction("house", addressString, "1"))
+    postTransaction(Transaction(addressString, "house", "1"))
   }
 }
 
@@ -215,4 +258,12 @@ object Addresses{
 
 object UrlEncoded {
   val urlEncoded = MediaTypes.`application/x-www-form-urlencoded`
+}
+
+object Scheduler {
+  def scheduleEvery[T](frequency: FiniteDuration)(task: => T)(implicit system: ActorSystem) = {
+    import system.dispatcher
+
+    system.scheduler.schedule(0.second, frequency)(task)
+  }
 }
