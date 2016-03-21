@@ -18,6 +18,7 @@ import com.mongodb.casbah._
 import com.mongodb.DBObject
 import com.mongodb.casbah.commons.MongoDBObject
 import com.mongodb.casbah.Implicits._
+import MongoWrapper._
 
 /**
  * Created by benjaminsmith on 3/18/16.
@@ -31,23 +32,6 @@ import com.mongodb.casbah.Implicits._
  * 6. Then, over some time the mixer will use the house account to dole out your bitcoins in smaller increments to the withdrawal addresses that you provided, possibly after deducting a fee.
  *
  */
-object MongoWrapper {
-  import JsonToCaseClass.{fromJson, toJson}
-  private lazy val mongoUri = MongoClientURI("mongodb://test:test@ds021299.mlab.com:21299/heroku_zmx64m97")
-
-  private lazy val mongoClient = MongoClient(mongoUri)
-
-  private lazy val internalAccountInfo = mongoClient("heroku_zmx64m97")("internalAccountInfo")
-
-  def getInternalAccountInfo:List[JsResult[InternalAccountInfo]] =
-    internalAccountInfo.find().map( dbo => fromJson[InternalAccountInfo](dbo.toString)).toList
-
-  def updateCanProcess(accountInfo: InternalAccountInfo) =
-    internalAccountInfo.update(MongoDBObject("accountId" -> accountInfo.accountId), MongoDBObject("$set" -> MongoDBObject("canProcess" -> true)))
-
-  def insertNewAccountInfo(address: InternalAccountInfo) =
-    internalAccountInfo.insert(toJson[InternalAccountInfo](address))
-}
 
 
 object BitcoinMixer {
@@ -74,7 +58,6 @@ object BitcoinMixer {
 
 object PollJobcoin {
   import JobcoinApi._
-  import MongoWrapper._
 
   def moveToHouseAccount:Unit = {
     getInternalAccountInfo.
@@ -139,7 +122,10 @@ class MixerServiceActor extends Actor {
       Unmarshaller.unmarshal[Transaction](entity) match {
         case Right(transaction) if transaction.fromAddress != houseAddress =>
           postTransaction(transaction) match {
-            case Success( _ ) => sender ! success
+            case Success( _ ) => {
+              findInternalAccountInfoByAddress(transaction.fromAddress).map(_.map(updateAmount))
+              sender ! success
+            }
             case Failure ( _ ) => sender ! failure
           }
         case Left( _ ) => sender ! failure
