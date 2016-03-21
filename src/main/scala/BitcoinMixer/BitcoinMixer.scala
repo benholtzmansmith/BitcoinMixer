@@ -47,11 +47,11 @@ object BitcoinMixer {
 
     println("Starting server!")
 
-    scheduleEvery(10.seconds)(PollJobcoin.moveToHouseAccount)
+    scheduleEvery(2.minutes)(PollJobcoin.moveToHouseAccount)
 
-    scheduleEvery(1.minute)(PollJobcoin.distributeToWithdrawalAccounts)
+    scheduleEvery(2.minutes)(PollJobcoin.distributeToWithdrawalAccounts)
     
-    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "0.0.0.0", port = myPort)
+    IO(SprayHttp) ? SprayHttp.Bind(service, interface = "localhost", port = myPort)
   }
 }
 
@@ -63,12 +63,13 @@ object PollJobcoin {
     getInternalAccountInfo.
       collect{ case JsSuccess(a, _) => a}.
       foreach( accountInfo => {
-        val balanceIsTheSame = getBalanceAndListOfTransactions(accountInfo.jobCoinAddress).
-          asOpt.
-          exists( _.balance.toLong == accountInfo.amountInAccount.toLong)
-        val balanceIsDifferent = !balanceIsTheSame
-        if (balanceIsDifferent) {
-          postTransaction(Transaction(accountInfo.jobCoinAddress, houseAddress, accountInfo.amountInAccount.toString))
+        for {
+          newBalance <- getBalanceAndListOfTransactions(accountInfo.jobCoinAddress).asOpt.map(_.balance.toInt)
+          hasChangeOccured = !(newBalance == accountInfo.amountInAccount)
+          if hasChangeOccured
+        } yield {
+          postTransaction(Transaction(accountInfo.jobCoinAddress, houseAddress, newBalance.toString))
+          updateAmount(accountInfo.copy(amountInAccount = newBalance.toInt))
           updateCanProcess(accountInfo.copy(canProcess = true))
         }
     })
@@ -79,7 +80,7 @@ object PollJobcoin {
       collect{ case JsSuccess(a, _) => a}.
       foreach{ accountInfo => {
       if (accountInfo.canProcess){
-        val someEvenAmount = accountInfo.amountInAccount.toLong / accountInfo.userOwnedAddresses.length
+        val someEvenAmount = accountInfo.amountInAccount.toDouble / accountInfo.userOwnedAddresses.length
 
         accountInfo.userOwnedAddresses.map(a => postTransaction(Transaction(houseAddress, a, someEvenAmount.toString)))
       }
@@ -122,10 +123,7 @@ class MixerServiceActor extends Actor {
       Unmarshaller.unmarshal[Transaction](entity) match {
         case Right(transaction) if transaction.fromAddress != houseAddress =>
           postTransaction(transaction) match {
-            case Success( _ ) => {
-              findInternalAccountInfoByAddress(transaction.toAddress).map(_.map(a => updateAmount(a.copy(amountInAccount = transaction.amount.toInt))))
-              sender ! success
-            }
+            case Success( _ ) => sender ! success
             case Failure ( _ ) => sender ! failure
           }
         case Left( _ ) => sender ! failure
