@@ -1,4 +1,4 @@
-name := "BitcoinMixer"
+name := "bitcoin-mixer"
 
 version := "1.0"
 
