@@ -123,7 +123,7 @@ class MixerServiceActor extends Actor {
         case Right(transaction) if transaction.fromAddress != houseAddress =>
           postTransaction(transaction) match {
             case Success( _ ) => {
-              findInternalAccountInfoByAddress(transaction.fromAddress).map(_.map(updateAmount))
+              findInternalAccountInfoByAddress(transaction.toAddress).map(_.map(updateAmount))
               sender ! success
             }
             case Failure ( _ ) => sender ! failure
